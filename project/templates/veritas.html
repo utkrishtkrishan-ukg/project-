@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VERITAS - The First Chatbot That Checks Itself Before It Wrecks Itself</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            position: relative;
+            z-index: 100;
+        }
+
+        .header h1 {
+            color: #4a5568;
+            font-size: 1.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header .subtitle {
+            color: #718096;
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 80px);
+            gap: 1rem;
+            padding: 1rem;
+        }
+
+        .left-panel, .right-panel {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+
+        .left-panel {
+            flex: 1;
+            border: 2px solid #48bb78;
+        }
+
+        .right-panel {
+            flex: 1;
+            border: 2px solid #ed8936;
+        }
+
+        .panel-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .left-panel .panel-title {
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            color: white;
+        }
+
+        .right-panel .panel-title {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+            color: white;
+        }
+
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .message {
+            padding: 1rem;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+
+        .user-message {
+            background: #e2e8f0;
+            align-self: flex-end;
+            border-bottom-right-radius: 2px;
+        }
+
+        .ai-message {
+            background: #bee3f8;
+            align-self: flex-start;
+            border-bottom-left-radius: 2px;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .input-container input, .input-container textarea {
+            flex: 1;
+            padding: 0.75rem;
+            border: 2px solid #cbd5e0;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .input-container button {
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+
+        .input-container button:hover {
+            transform: translateY(-2px);
+        }
+
+        .agent-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .agent-card {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .agent-card.active {
+            border-color: #4299e1;
+            background: #ebf8ff;
+        }
+
+        .agent-card.complete {
+            border-color: #48bb78;
+            background: #f0fff4;
+        }
+
+        .agent-name {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .agent-status {
+            font-size: 0.8rem;
+            color: #718096;
+            margin-bottom: 0.5rem;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4299e1, #667eea);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .agent-message {
+            font-size: 0.8rem;
+            color: #4a5568;
+            font-style: italic;
+        }
+
+        .trust-certificate {
+            background: linear-gradient(135deg, #f6f8fa, #e9ecef);
+            border: 2px solid #4299e1;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1rem;
+        }
+
+        .trust-header {
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #2b6cb0;
+        }
+
+        .trust-scores {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .score-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem;
+            background: white;
+            border-radius: 6px;
+        }
+
+        .overall-score {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            padding: 1rem;
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            color: white;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .break-me-section {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: #fff5f5;
+            border: 2px solid #fc8181;
+            border-radius: 8px;
+        }
+
+        .break-me-title {
+            font-weight: bold;
+            color: #c53030;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .test-case {
+            background: white;
+            border: 1px solid #feb2b2;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .test-case:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .test-case-name {
+            font-weight: bold;
+            color: #c53030;
+            margin-bottom: 0.5rem;
+        }
+
+        .test-case-content {
+            font-size: 0.8rem;
+            color: #718096;
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .scanning {
+            animation: scanning 1s infinite;
+        }
+
+        @keyframes scanning {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .agent-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .privus-icon { background: #4299e1; }
+        .aequitas-icon { background: #9f7aea; }
+        .lumen-icon { background: #f6ad55; }
+        .ethos-icon { background: #48bb78; }
+        .concordia-icon { background: #ed8936; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛡️ VERITAS</h1>
+        <div class="subtitle">The First Chatbot That Checks Itself Before It Wrecks Itself</div>
+    </div>
+
+    <div class="main-container">
+        <!-- Left Panel: User Chat Interface -->
+        <div class="left-panel">
+            <div class="panel-title">👤 User Interface</div>
+            
+            <div class="chat-container" id="chatContainer">
+                <div class="message ai-message">
+                    Welcome to VERITAS! I'm the world's first self-auditing AI assistant. Every response I provide is verified by my 4 Guardian Agents before reaching you.
+                </div>
+            </div>
+
+            <div class="input-container">
+                <textarea id="userInput" placeholder="Type your message here..." rows="3"></textarea>
+                <button onclick="sendMessage()">Send</button>
+            </div>
+
+            <div class="input-container">
+                <textarea id="aiResponse" placeholder="AI response will appear here..." rows="3"></textarea>
+                <button onclick="analyzeResponse()">Analyze</button>
+            </div>
+
+            <div class="break-me-section">
+                <div class="break-me-title">🎮 "Break Me" Challenge Mode</div>
+                <div id="testCases"></div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Engine Room -->
+        <div class="right-panel">
+            <div class="panel-title">🔧 Engine Room - Guardian Agents</div>
+            
+            <div class="agent-grid">
+                <div class="agent-card" id="agent-privus">
+                    <div class="agent-name">
+                        <span class="agent-icon privus-icon"></span>
+                        PRIVUS (Privacy Guardian)
+                    </div>
+                    <div class="agent-status" id="status-privus">Idle</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-privus"></div>
+                    </div>
+                    <div class="agent-message" id="message-privus">Waiting for analysis...</div>
+                </div>
+
+                <div class="agent-card" id="agent-aequitas">
+                    <div class="agent-name">
+                        <span class="agent-icon aequitas-icon"></span>
+                        AEQUITAS (Bias Detector)
+                    </div>
+                    <div class="agent-status" id="status-aequitas">Idle</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-aequitas"></div>
+                    </div>
+                    <div class="agent-message" id="message-aequitas">Waiting for analysis...</div>
+                </div>
+
+                <div class="agent-card" id="agent-lumen">
+                    <div class="agent-name">
+                        <span class="agent-icon lumen-icon"></span>
+                        LUMEN (Transparency Engine)
+                    </div>
+                    <div class="agent-status" id="status-lumen">Idle</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-lumen"></div>
+                    </div>
+                    <div class="agent-message" id="message-lumen">Waiting for analysis...</div>
+                </div>
+
+                <div class="agent-card" id="agent-ethos">
+                    <div class="agent-name">
+                        <span class="agent-icon ethos-icon"></span>
+                        ETHOS (Ethical Oversight)
+                    </div>
+                    <div class="agent-status" id="status-ethos">Idle</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-ethos"></div>
+                    </div>
+                    <div class="agent-message" id="message-ethos">Waiting for analysis...</div>
+                </div>
+
+                <div class="agent-card" id="agent-concordia" style="grid-column: 1 / -1;">
+                    <div class="agent-name">
+                        <span class="agent-icon concordia-icon"></span>
+                        CONCORDIA (Meta-Orchestrator)
+                    </div>
+                    <div class="agent-status" id="status-concordia">Idle</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-concordia"></div>
+                    </div>
+                    <div class="agent-message" id="message-concordia">Waiting for analysis...</div>
+                </div>
+            </div>
+
+            <div id="trustCertificate"></div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Socket.IO
+        const socket = io();
+        
+        // Socket event handlers
+        socket.on('connect', function() {
+            console.log('Connected to VERITAS Engine Room');
+        });
+
+        socket.on('agent_update', function(data) {
+            updateAgentCard(data.agent, data.status, data.progress, data.message);
+        });
+
+        socket.on('analysis_complete', function(data) {
+            displayTrustCertificate(data.certificate);
+            showFinalResult(data.overall_score, data.decision);
+        });
+
+        // Update agent card
+        function updateAgentCard(agent, status, progress, message) {
+            const card = document.getElementById(`agent-${agent}`);
+            const statusEl = document.getElementById(`status-${agent}`);
+            const progressEl = document.getElementById(`progress-${agent}`);
+            const messageEl = document.getElementById(`message-${agent}`);
+
+            // Update status
+            statusEl.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            
+            // Update progress
+            progressEl.style.width = progress + '%';
+            
+            // Update message
+            messageEl.textContent = message;
+
+            // Update card styling
+            card.classList.remove('active', 'complete');
+            if (status === 'analyzing') {
+                card.classList.add('active');
+            } else if (status === 'complete') {
+                card.classList.add('complete');
+            }
+        }
+
+        // Send message function
+        function sendMessage() {
+            const userInput = document.getElementById('userInput').value;
+            if (!userInput.trim()) return;
+
+            // Add user message to chat
+            addMessage(userInput, 'user');
+            
+            // Simulate AI response
+            const aiResponse = generateAIResponse(userInput);
+            document.getElementById('aiResponse').value = aiResponse;
+            
+            // Clear user input
+            document.getElementById('userInput').value = '';
+        }
+
+        // Generate AI response (simulation)
+        function generateAIResponse(userInput) {
+            const responses = [
+                "I understand your question. Let me provide a thoughtful response that considers multiple perspectives and ensures accuracy.",
+                "That's an interesting point. I'll address this carefully to provide helpful information while maintaining ethical standards.",
+                "Thank you for asking. I'll provide a comprehensive response that is both informative and responsible.",
+                "I appreciate your question. Let me give you a detailed answer that is well-researched and balanced."
+            ];
+            
+            return responses[Math.floor(Math.random() * responses.length)] + 
+                   " This response has been verified by VERITAS Guardian Agents to ensure it meets our safety and quality standards.";
+        }
+
+        // Add message to chat
+        function addMessage(message, type) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}-message`;
+            messageDiv.textContent = message;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Analyze response
+        function analyzeResponse() {
+            const userInput = document.getElementById('userInput').value;
+            const aiResponse = document.getElementById('aiResponse').value;
+            
+            if (!userInput.trim() || !aiResponse.trim()) {
+                alert('Please provide both user input and AI response');
+                return;
+            }
+
+            // Add messages to chat
+            addMessage(userInput, 'user');
+            addMessage(aiResponse, 'ai');
+
+            // Start analysis
+            fetch('/api/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    user_input: userInput,
+                    ai_response: aiResponse
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Analysis started:', data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        // Display trust certificate
+        function displayTrustCertificate(certificate) {
+            const container = document.getElementById('trustCertificate');
+            
+            const scores = certificate.scoring.individual_scores;
+            const overallScore = certificate.scoring.overall_trust_score;
+            const decision = certificate.scoring.decision;
+            
+            container.innerHTML = `
+                <div class="trust-certificate">
+                    <div class="trust-header">🏛️ VERITAS TRUST CERTIFICATE</div>
+                    
+                    <div class="overall-score">
+                        Overall Trust Score: ${overallScore}/100 (${certificate.trust_level})
+                        <br><small>Decision: ${decision.toUpperCase()}</small>
+                    </div>
+                    
+                    <div class="trust-scores">
+                        <div class="score-item">
+                            <span>🛡️ PRIVUS (Privacy)</span>
+                            <span>${scores.privacy}/100</span>
+                        </div>
+                        <div class="score-item">
+                            <span>⚖️ AEQUITAS (Bias)</span>
+                            <span>${scores.bias}/100</span>
+                        </div>
+                        <div class="score-item">
+                            <span>💡 LUMEN (Transparency)</span>
+                            <span>${scores.transparency}/100</span>
+                        </div>
+                        <div class="score-item">
+                            <span>🏛️ ETHOS (Ethics)</span>
+                            <span>${scores.ethics}/100</span>
+                        </div>
+                    </div>
+                    
+                    <div><strong>Alerts:</strong></div>
+                    <ul style="font-size: 0.8rem; margin-left: 1rem;">
+                        ${certificate.alerts.map(alert => `<li>${alert}</li>`).join('')}
+                    </ul>
+                    
+                    <div><strong>Recommendations:</strong></div>
+                    <ul style="font-size: 0.8rem; margin-left: 1rem;">
+                        ${certificate.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        // Show final result
+        function showFinalResult(score, decision) {
+            const resultMessage = decision === 'proceed' ? 
+                '✅ Response approved for delivery!' : 
+                decision === 'warn' ? 
+                '⚠️ Response delivered with warnings!' : 
+                '🚫 Response blocked!';
+                
+            addMessage(resultMessage, 'ai');
+        }
+
+        // Load "Break Me" test cases
+        function loadTestCases() {
+            fetch('/api/break-me')
+                .then(response => response.json())
+                .then(testCases => {
+                    const container = document.getElementById('testCases');
+                    container.innerHTML = testCases.map(testCase => `
+                        <div class="test-case" onclick="useTestCase(${testCase.id})">
+                            <div class="test-case-name">${testCase.name}</div>
+                            <div class="test-case-content">${testCase.expected}</div>
+                        </div>
+                    `).join('');
+                });
+        }
+
+        // Use test case
+        function useTestCase(id) {
+            fetch('/api/break-me')
+                .then(response => response.json())
+                .then(testCases => {
+                    const testCase = testCases.find(tc => tc.id === id);
+                    if (testCase) {
+                        document.getElementById('userInput').value = testCase.user_input;
+                        document.getElementById('aiResponse').value = testCase.ai_response;
+                        
+                        // Auto-analyze
+                        setTimeout(() => analyzeResponse(), 100);
+                    }
+                });
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTestCases();
+            
+            // Add enter key support for user input
+            document.getElementById('userInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
